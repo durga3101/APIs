@@ -1,0 +1,15 @@
+{
+  "name": "google-workspace-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "create:event": "node create-calendar-event.js",
+    "assign:breakouts:ui": "node assign-breakout-rooms-ui.js",
+    "assign:breakouts:api-exp": "node assign-breakout-rooms-api-experiments.js"
+  },
+  "dependencies": {
+    "googleapis": "^140.0.1",
+    "puppeteer": "^24.7.1"
+  }
+}
