@@ -24,6 +24,7 @@
  *   CREATE_MEET_LINK=true
  */
 
+require('dotenv').config();
 const { google } = require('googleapis');
 
 function requireEnv(name) {

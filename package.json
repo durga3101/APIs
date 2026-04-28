@@ -9,6 +9,7 @@
     "assign:breakouts:api-exp": "node assign-breakout-rooms-api-experiments.js"
   },
   "dependencies": {
+    "dotenv": "^17.4.2",
     "googleapis": "^140.0.1",
     "puppeteer": "^24.7.1"
   }

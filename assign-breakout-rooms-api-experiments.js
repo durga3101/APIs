@@ -20,6 +20,7 @@
  * - Accepted PATCH response does not guarantee Meet UI applied breakout rooms.
  */
 
+require('dotenv').config();
 const { google } = require('googleapis');
 
 function requireEnv(name) {

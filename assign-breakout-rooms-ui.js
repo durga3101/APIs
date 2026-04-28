@@ -17,6 +17,7 @@
  *   ACTION_DELAY_MS=500
  */
 
+require('dotenv').config();
 const puppeteer = require('puppeteer');
 
 function requireEnv(name) {
