@@ -162,20 +162,22 @@ async function main() {
           console.log('[patch:v4] No Meet space ID found in event — skipping.');
           continue;
         }
-        // Meet REST API: PATCH spaces/{spaceId}
-        // spaceConfig does not have an official breakout-rooms field yet;
-        // this call probes what the API accepts so we can inspect the response shape.
-        const meetClient = google.meet({ version: 'v2', auth: buildOauthClient() });
-        const meetRes = await meetClient.spaces.patch({
-          name: `spaces/${spaceId}`,
-          updateMask: 'spaceConfig',
-          requestBody: {
-            spaceConfig: {
-              // Probe: add fields here as Meet API evolves
-            },
+        // Meet REST API: PATCH spaces/{spaceId} via raw HTTP (google.meet not in older googleapis)
+        const auth = buildOauthClient();
+        const { token } = await auth.getAccessToken();
+        const meetUrl = `https://meet.googleapis.com/v2/spaces/${spaceId}?updateMask=spaceConfig`;
+        const meetBody = JSON.stringify({ spaceConfig: {} });
+        const meetRes = await fetch(meetUrl, {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
           },
+          body: meetBody,
         });
-        console.log('[patch:v4] Meet API response:', JSON.stringify(meetRes.data, null, 2));
+        const meetData = await meetRes.json();
+        console.log('[patch:v4] Meet API status:', meetRes.status);
+        console.log('[patch:v4] Meet API response:', JSON.stringify(meetData, null, 2));
         if (variant === 'all') break;
         continue;
       }
