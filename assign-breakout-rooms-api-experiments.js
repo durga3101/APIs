@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Experimental Google Calendar API payloads for breakout-room assignment.
+ * Experimental Google Calendar / Meet API payloads for breakout-room assignment.
  *
  * Required ENV:
  *   GOOGLE_CLIENT_ID
@@ -13,7 +13,12 @@
  *
  * Optional ENV:
  *   CALENDAR_ID=primary
- *   PATCH_VARIANT=all|v1|v2|v3   (default: all)
+ *   PATCH_VARIANT=all|v1|v2|v3|v4   (default: all)
+ *
+ * Root cause of v1–v3 failures:
+ *   conferenceData.parameters.addOnParameters is READ-ONLY via Calendar REST API.
+ *   The API returns 400 "Invalid conference data" for any attempt to write it.
+ *   Breakout rooms are a Meet concept — use Meet REST API (v4) instead.
  *
  * Note:
  * - This is for experimentation only.
@@ -135,15 +140,53 @@ async function main() {
     },
   };
 
-  const toRun = variant === 'all' ? ['v1', 'v2', 'v3'] : [variant];
+  // v4: Meet REST API — the only API that may support breakout room config.
+  // Requires Meet API enabled + scope: https://www.googleapis.com/auth/meetings.space.settings
+  // meetingUri looks like "https://meet.google.com/xxx-yyyy-zzz" → spaceId = "xxx-yyyy-zzz"
+  const meetingUri = (data.conferenceData.entryPoints || []).find(
+    (ep) => ep.entryPointType === 'video'
+  )?.uri;
+  const spaceId = meetingUri ? meetingUri.split('/').pop() : null;
+
+  if (spaceId) {
+    variants.v4 = { _meetSpaceId: spaceId };
+  }
+
+  const toRun = variant === 'all' ? ['v1', 'v2', 'v3', 'v4'] : [variant];
   for (const v of toRun) {
     if (!variants[v]) throw new Error(`Unknown PATCH_VARIANT: ${v}`);
 
     try {
+      if (v === 'v4') {
+        if (!spaceId) {
+          console.log('[patch:v4] No Meet space ID found in event — skipping.');
+          continue;
+        }
+        // Meet REST API: PATCH spaces/{spaceId}
+        // spaceConfig does not have an official breakout-rooms field yet;
+        // this call probes what the API accepts so we can inspect the response shape.
+        const meetClient = google.meet({ version: 'v2', auth: buildOauthClient() });
+        const meetRes = await meetClient.spaces.patch({
+          name: `spaces/${spaceId}`,
+          updateMask: 'spaceConfig',
+          requestBody: {
+            spaceConfig: {
+              // Probe: add fields here as Meet API evolves
+            },
+          },
+        });
+        console.log('[patch:v4] Meet API response:', JSON.stringify(meetRes.data, null, 2));
+        if (variant === 'all') break;
+        continue;
+      }
+
+      const patchBody = { ...variants[v] };
+      console.log(`[patch:${v}] attendees=${patchBody.attendees?.length} conferenceParamKeys=${Object.keys((patchBody.conferenceData?.parameters?.addOnParameters?.parameters) || {}).join(',')}`);
+
       const res = await calendar.events.patch({
         calendarId,
         eventId,
-        requestBody: variants[v],
+        requestBody: patchBody,
         conferenceDataVersion: 1,
         sendUpdates: 'all',
       });
@@ -155,6 +198,8 @@ async function main() {
 
       if (variant === 'all') break;
     } catch (err) {
+      const errorResponse = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+      console.log(`[patch:${v}] errorResponse=${errorResponse}`);
       console.log(`PATCH ${v} failed: ${err.message}`);
       if (variant !== 'all') throw err;
     }
