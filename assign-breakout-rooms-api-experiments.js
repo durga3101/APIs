@@ -147,6 +147,10 @@ async function main() {
     (ep) => ep.entryPointType === 'video'
   )?.uri;
   const spaceId = meetingUri ? meetingUri.split('/').pop() : null;
+  console.log('[patch:v4] meetingUri:', meetingUri);
+  console.log('[patch:v4] spaceId:', spaceId);
+  console.log('[patch:v4] conferenceId:', data.conferenceData.conferenceId);
+  console.log('[patch:v4] entryPoints:', JSON.stringify(data.conferenceData.entryPoints));
 
   if (spaceId) {
     variants.v4 = { _meetSpaceId: spaceId };
@@ -162,22 +166,35 @@ async function main() {
           console.log('[patch:v4] No Meet space ID found in event — skipping.');
           continue;
         }
-        // Meet REST API: PATCH spaces/{spaceId} via raw HTTP (google.meet not in older googleapis)
+        // Meet REST API: probe GET first, then PATCH
         const auth = buildOauthClient();
         const { token } = await auth.getAccessToken();
-        const meetUrl = `https://meet.googleapis.com/v2/spaces/${spaceId}?updateMask=spaceConfig`;
-        const meetBody = JSON.stringify({ spaceConfig: {} });
-        const meetRes = await fetch(meetUrl, {
+        const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+        const baseUrl = `https://meet.googleapis.com/v2/spaces/${spaceId}`;
+
+        // GET — verify space is accessible and get canonical resource name
+        const getRes = await fetch(baseUrl, { headers });
+        const getData = await getRes.json();
+        console.log('[patch:v4] GET status:', getRes.status);
+        console.log('[patch:v4] GET response:', JSON.stringify(getData, null, 2));
+
+        if (!getRes.ok) {
+          console.log('[patch:v4] Cannot reach space — skipping PATCH. Check: Meet API enabled in Cloud Console? Space ID correct?');
+          if (variant === 'all') break;
+          continue;
+        }
+
+        // Use canonical name from GET response
+        const canonicalName = getData.name || `spaces/${spaceId}`;
+        const patchUrl = `https://meet.googleapis.com/v2/${canonicalName}?updateMask=config`;
+        const meetRes = await fetch(patchUrl, {
           method: 'PATCH',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: meetBody,
+          headers,
+          body: JSON.stringify({ config: {} }),
         });
         const meetData = await meetRes.json();
-        console.log('[patch:v4] Meet API status:', meetRes.status);
-        console.log('[patch:v4] Meet API response:', JSON.stringify(meetData, null, 2));
+        console.log('[patch:v4] PATCH status:', meetRes.status);
+        console.log('[patch:v4] PATCH response:', JSON.stringify(meetData, null, 2));
         if (variant === 'all') break;
         continue;
       }
