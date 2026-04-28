@@ -184,17 +184,29 @@ async function main() {
           continue;
         }
 
-        // Use canonical name from GET response
         const canonicalName = getData.name || `spaces/${spaceId}`;
-        const patchUrl = `https://meet.googleapis.com/v2/${canonicalName}?updateMask=config`;
-        const meetRes = await fetch(patchUrl, {
-          method: 'PATCH',
-          headers,
-          body: JSON.stringify({ config: {} }),
-        });
-        const meetData = await meetRes.json();
-        console.log('[patch:v4] PATCH status:', meetRes.status);
-        console.log('[patch:v4] PATCH response:', JSON.stringify(meetData, null, 2));
+
+        // Probe known writable fields first, then undocumented breakout room candidates
+        const probes = [
+          // Confirm PATCH works at all with a known field (no-op value change)
+          { mask: 'config.moderation', body: { config: { moderation: getData.config?.moderation || 'OFF' } }, label: 'known field (moderation)' },
+          // Undocumented breakout room field candidates
+          { mask: 'config.breakoutRoomsConfig', body: { config: { breakoutRoomsConfig: {} } }, label: 'breakoutRoomsConfig' },
+          { mask: 'config.breakoutRooms', body: { config: { breakoutRooms: [] } }, label: 'breakoutRooms' },
+          { mask: 'config.breakoutRoomSettings', body: { config: { breakoutRoomSettings: {} } }, label: 'breakoutRoomSettings' },
+        ];
+
+        for (const probe of probes) {
+          const patchUrl = `https://meet.googleapis.com/v2/${canonicalName}?updateMask=${probe.mask}`;
+          const meetRes = await fetch(patchUrl, { method: 'PATCH', headers, body: JSON.stringify(probe.body) });
+          const meetData = await meetRes.json();
+          console.log(`[patch:v4] PATCH [${probe.label}] status:`, meetRes.status);
+          if (meetRes.status !== 200) {
+            console.log(`[patch:v4] PATCH [${probe.label}] error:`, meetData?.error?.message);
+          } else {
+            console.log(`[patch:v4] PATCH [${probe.label}] response:`, JSON.stringify(meetData, null, 2));
+          }
+        }
         if (variant === 'all') break;
         continue;
       }
